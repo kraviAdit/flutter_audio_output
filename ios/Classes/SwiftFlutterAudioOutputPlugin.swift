@@ -130,20 +130,12 @@ public class SwiftFlutterAudioOutputPlugin: NSObject, FlutterPlugin {
 
     public override init() {
         super.init()
-        setupAudioSession()
+        // Do NOT call setupAudioSession() at init — setting playAndRecord + allowBluetooth
+        // at app launch causes iOS to trigger auto-dial when Bluetooth devices connect.
+        // Audio session should be configured by AppDelegate only when a call is active.
         registerAudioRouteChangeBlock()
     }
-    
-    func setupAudioSession() {
-        do {
-            let audioSession = AVAudioSession.sharedInstance()
-            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth, .allowBluetoothA2DP])
-            try audioSession.setActive(true)
-        } catch {
-            print("Error setting up audio session: \(error)")
-        }
-    }
-    
+
     func registerAudioRouteChangeBlock(){
         NotificationCenter.default.addObserver( forName:AVAudioSession.routeChangeNotification, object: AVAudioSession.sharedInstance(), queue: nil) { [weak self] notification in
             guard let self = self,
@@ -152,8 +144,12 @@ public class SwiftFlutterAudioOutputPlugin: NSObject, FlutterPlugin {
                   let reason = AVAudioSession.RouteChangeReason(rawValue:reasonValue) else {
                     return
             }
-            print("registerAudioRouteChangeBlock \(reason)")
-            self.channel?.invokeMethod("inputChanged", arguments: 1)
+            // Only notify Flutter of route changes that are relevant (device added/removed),
+            // not category changes or other internal reasons
+            if reason == .newDeviceAvailable || reason == .oldDeviceUnavailable {
+                print("registerAudioRouteChangeBlock \(reason)")
+                self.channel?.invokeMethod("inputChanged", arguments: 1)
+            }
         }
     }
 }
